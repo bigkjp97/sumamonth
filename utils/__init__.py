@@ -1,8 +1,10 @@
 import calendar
 import datetime
+import json
 import re
 import time
 import pymongo
+import redis
 
 
 class Output:
@@ -23,6 +25,10 @@ class Output:
 
 
 class Monger:
+    """
+    Use Pymongo
+    """
+
     def __init__(self,
                  url,
                  port,
@@ -30,7 +36,10 @@ class Monger:
                  auth,
                  col_name,
                  case,
-                 utc):
+                 utc,
+                 hostR,
+                 portR,
+                 authR):
         self.url = url
         self.port = port
         self.dbname = dbname
@@ -38,6 +47,9 @@ class Monger:
         self.col = col_name
         self.case = case
         self.utc = utc
+        self.hostR = hostR
+        self.portR = portR
+        self.authR = authR
         self.now = datetime.datetime.today() - datetime.timedelta(hours=8)
         self.maxTry = 0
 
@@ -89,7 +101,6 @@ class Monger:
             if m == 1:
                 y1, y2 = y - 1, y
                 m1, m2 = 12, 1
-                print("It's a gap")
             else:
                 y1, y2 = y, y
                 m1, m2 = m - 1, m
@@ -104,6 +115,7 @@ class Monger:
             dset = []
             for data in dataset:
                 dset.append(data)
+            # data object
             return dset
 
     def display_data(self, y, m):
@@ -113,35 +125,49 @@ class Monger:
 
         @TODO(data): Fixed dead code
         """
-        dataset = []
-        for line in self._collection(y, m):
-            if re.findall(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", line['group']):
-                continue
-            group = line['group']
-            code = line['code']
-            codeCmd = line['codeCmd']
-            query = line['queryCmd']
-            # 2021-05-05 00:00:00
-            line['alarmTime'] = self._time_transfer(line['alarmTime'])
-            line['exitAlarmTime'] = self._time_transfer(line['exitAlarmTime'])
-            startDay = line['alarmTime'][8:10]
-            startTime = line['alarmTime']
-            endTime = line['exitAlarmTime']
-            line['alarmDuration'] = round(line['alarmDuration'] / 60)
-            duration = line['alarmDuration']
-            description = line['description']
-            wikiContent = line['wikiContent']
-            data = {
-                'group': group,
-                'code': code,
-                'codeCmd': codeCmd,
-                'query': query,
-                'date': startDay,
-                'start': startTime,
-                'end': endTime,
-                'duration': duration,
-                'description': description,
-                'wiki': wikiContent,
-            }
-            dataset.append(data)
+        RDB = RedisMonth(self.hostR, self.portR, self.authR)
+        cacheName = str(y) + str(m)
+        dataset = RDB.extract_redis(cacheName)
+        if dataset is None:
+            # Output("INFO", "No cache, reload from MongoDB")
+            dataset = []
+            for line in self._collection(y, m):
+                if re.findall(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", line['group']):
+                    continue
+                data = {
+                    'group': line['group'],
+                    'code': line['code'],
+                    'codeCmd': line['codeCmd'],
+                    'query': line['queryCmd'],
+                    # 2021-05-05 00:00:00
+                    'start': self._time_transfer(line['alarmTime']),
+                    'end': self._time_transfer(line['exitAlarmTime']),
+                    'duration': round(line['alarmDuration'] / 60),
+                    'description': line['description'],
+                    'wiki': line['wikiContent'],
+                }
+                dataset.append(data)
+            RDB.store_redis(json.dumps(dataset), cacheName)
         return dataset
+
+
+class RedisMonth:
+    """
+    Store monthly data into redis
+    """
+
+    def __init__(self, host, port, auth):
+        self.host = host
+        self.port = port
+        self.auth = auth
+
+    def _conn(self):
+        rdb = redis.StrictRedis(host=self.host, port=self.port, db=0, password=self.auth, decode_responses=True)
+        return rdb
+
+    def store_redis(self, data, name):
+        # Cache data with year&month
+        self._conn().setex('monthCache' + name, 10, data)
+
+    def extract_redis(self, name):
+        return self._conn().get('monthCache' + name)

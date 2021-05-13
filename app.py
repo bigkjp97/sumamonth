@@ -14,10 +14,12 @@ with open(os.path.join(os.path.dirname(__file__), 'translation.json'), encoding=
     translation = words['locale']
 
 with open('init.yaml') as f:
-    mongoParam = yaml.load(f, Loader=yaml.FullLoader)
-    param = mongoParam['mongodb'][0]
-    url, port, auth, dbname, collection, case, utc = param['url'], param['port'], param['auth'], param['dbname'], param[
-        'collection'], param['case'], param['utc']
+    params = yaml.load(f, Loader=yaml.FullLoader)
+    paramM = params['mongodb'][0]
+    paramR = params['redis'][0]
+    url, port, auth, dbname, collection, case, utc = paramM['url'], paramM['port'], paramM['auth'], paramM['dbname'], \
+                                                     paramM['collection'], paramM['case'], paramM['utc']
+    hostR, portR, authR = paramR['host'], paramR['port'], paramR['auth']
 
 
 @app.route('/')
@@ -27,7 +29,8 @@ def index():
 
 @app.route('/api/<year>/<month>', methods=['GET'])
 def api(year, month):
-    res = Monger(url, port, dbname, auth, collection, case, utc).display_data(translation[year], translation[month])
+    res = Monger(url, port, dbname, auth, collection, case, utc, hostR, portR, authR).display_data(translation[year],
+                                                                                                   translation[month])
     return jsonify(res)
 
 
