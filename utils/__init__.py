@@ -52,6 +52,7 @@ class Monger:
         self.authR = authR
         self.now = datetime.datetime.today() - datetime.timedelta(hours=8)
         self.maxTry = 0
+        self.RDB = RedisMonth(self.hostR, self.portR, self.authR)
 
     def _conn(self):
         client = pymongo.MongoClient(self.url, self.port)
@@ -86,6 +87,7 @@ class Monger:
         mon1 is start then mon2 is end,
         use pymongo find() data between $gte and $lte
         """
+
         dataset = None
         try:
             self._conn()
@@ -118,18 +120,18 @@ class Monger:
             # data object
             return dset
 
-    def display_data(self, y, m):
+    def _month_data(self, y, m):
         """
         This is customized way to handle collection
         and extract info
 
         @TODO(data): Fixed dead code
         """
-        RDB = RedisMonth(self.hostR, self.portR, self.authR)
-        cacheName = str(y) + str(m)
-        dataset = RDB.extract_redis(cacheName)
-        if dataset is None:
-            # Output("INFO", "No cache, reload from MongoDB")
+        cacheName = 'monthCache' + str(y) + str(m)
+        dataset = self.RDB.extract_redis(cacheName)
+        if dataset is not None:
+            dataset = json.loads(dataset)
+        else:
             dataset = []
             for line in self._collection(y, m):
                 if re.findall(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", line['group']):
@@ -147,8 +149,58 @@ class Monger:
                     'wiki': line['wikiContent'],
                 }
                 dataset.append(data)
-            RDB.store_redis(json.dumps(dataset), cacheName)
+            self.RDB.store_redis(json.dumps(dataset), cacheName)
         return dataset
+
+    def _summery_data(self, y, m):
+        monthData = self._month_data(y, m)
+        group, times, mins = [], [], []
+        groupCodes, codes, groupContents, contents = [], [], [], []
+        for i in range(len(monthData)):
+            gName, dMins, cName, cmdName = monthData[i]['group'], monthData[i]['duration'], monthData[i]['code'], \
+                                           monthData[i]['codeCmd']
+            if gName not in group:
+                group.append(gName)
+                times.append(1)
+                mins.append(dMins)
+                codes.append([cName])
+                contents.append([cmdName])
+                groupCodes.append([1])
+                groupContents.append([1])
+            else:
+                times[group.index(gName)] += 1
+                mins[group.index(gName)] += dMins
+                if cName not in codes[group.index(gName)]:
+                    codes[group.index(gName)].append(cName)
+                    groupCodes[group.index(gName)].append(1)
+                else:
+                    groupCodes[group.index(gName)][codes[group.index(gName)].index(cName)] += 1
+                if cmdName not in contents[group.index(gName)]:
+                    contents[group.index(gName)].append(cmdName)
+                    groupContents[group.index(gName)].append(1)
+                else:
+                    groupContents[group.index(gName)][contents[group.index(gName)].index(cmdName)] += 1
+        return group, times, mins, codes, contents, groupCodes, groupContents
+
+    def index_data(self, y, m):
+        group, times, mins, _, _, count1, count2 = self._summery_data(y, m)
+        cacheName = 'indexCache' + str(y) + str(m)
+        res = self.RDB.extract_redis(cacheName)
+        if res is not None:
+            res = json.loads(res)
+        else:
+            res = []
+            for g in range(len(group)):
+                dic = {
+                    'group': group[g],
+                    'times': times[g],
+                    'mins': mins[g],
+                    'codes': len(count1[g]),
+                    'contents': len(count2[g])
+                }
+                res.append(dic)
+            self.RDB.store_redis(json.dumps(res), cacheName)
+        return res
 
 
 class RedisMonth:
@@ -162,12 +214,15 @@ class RedisMonth:
         self.auth = auth
 
     def _conn(self):
-        rdb = redis.StrictRedis(host=self.host, port=self.port, db=0, password=self.auth, decode_responses=True)
+        rdb = redis.StrictRedis(host=self.host, port=self.port, password=self.auth, decode_responses=True)
         return rdb
 
     def store_redis(self, data, name):
         # Cache data with year&month
-        self._conn().setex('monthCache' + name, 10, data)
+        self._conn().setex(name, 60, data)
+        # self._conn().execute_command('JSON.SET', name, '.', data)
+        # self._conn().execute_command('JSON.DEL', 'monthCache' + name)
 
     def extract_redis(self, name):
-        return self._conn().get('monthCache' + name)
+        return self._conn().get(name)
+        # return self._conn().execute_command('JSON.GET', name)

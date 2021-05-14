@@ -29,8 +29,8 @@ def index():
 
 @app.route('/api/<year>/<month>', methods=['GET'])
 def api(year, month):
-    res = Monger(url, port, dbname, auth, collection, case, utc, hostR, portR, authR).display_data(translation[year],
-                                                                                                   translation[month])
+    res = Monger(url, port, dbname, auth, collection, case, utc, hostR, portR, authR).index_data(translation[year],
+                                                                                                 translation[month])
     return jsonify(res)
 
 
