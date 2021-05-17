@@ -108,10 +108,11 @@ class Monger:
         except:
             Output("ERROR", "MongoDB connection failed")
         else:
-            dataset = self._conn()[self.col].find({self.case: {
-                '$gte': self._last_day(self.y1, self.m1, self.t1),
-                '$lte': self._last_day(self.y2, self.m2, self.t2)
-            }
+            dataset = self._conn()[self.col].find({
+                self.case: {
+                    '$gte': self._last_day(self.y1, self.m1, self.t1),
+                    '$lte': self._last_day(self.y2, self.m2, self.t2)
+                }
             })
         if dataset is None:
             Output("ERROR", "NO DATA")
@@ -157,10 +158,11 @@ class Monger:
     def _summery_data(self):
         monthData = self._month_data()
         group, times, mins = [], [], []
-        groupCodes, codes, groupContents, contents = [], [], [], []
+        groupCodes, codes, groupContents, contents, groupMaxDuration, groupMaxAlarm = [], [], [], [], [], []
         for i in range(len(monthData)):
-            gName, dMins, cName, cmdName = monthData[i]['group'], monthData[i]['duration'], monthData[i]['code'], \
-                                           monthData[i]['codeCmd']
+            gName, dMins, cName, cmdName, maxAlarm = monthData[i]['group'], monthData[i]['duration'], monthData[i][
+                'code'], \
+                                                     monthData[i]['codeCmd'], monthData[i]['start']
             if gName not in group:
                 group.append(gName)
                 times.append(1)
@@ -169,6 +171,8 @@ class Monger:
                 contents.append([cmdName])
                 groupCodes.append([1])
                 groupContents.append([1])
+                groupMaxDuration.append(dMins)
+                groupMaxAlarm.append(maxAlarm)
             else:
                 times[group.index(gName)] += 1
                 mins[group.index(gName)] += dMins
@@ -182,7 +186,10 @@ class Monger:
                 else:
                     contents[group.index(gName)].append(cmdName)
                     groupContents[group.index(gName)].append(1)
-        return group, times, mins, codes, contents, groupCodes, groupContents
+                if groupMaxDuration[group.index(gName)] < dMins:
+                    groupMaxDuration[group.index(gName)] = dMins
+                    groupMaxAlarm[group.index(gName)] = maxAlarm
+        return group, times, mins, codes, contents, groupCodes, groupContents, groupMaxDuration, groupMaxAlarm
 
     def _find_tag(self, group):
         """
@@ -190,36 +197,36 @@ class Monger:
         """
         tagSet = self._conn()[self.col].aggregate(
             [{'$match': {
-                'alarmTime': {'$gte': self._last_day(self.y1, self.m1, self.t1),
-                              '$lte': self._last_day(self.y2, self.m2, self.t2)},
+                self.case: {'$gte': self._last_day(self.y1, self.m1, self.t1),
+                            '$lte': self._last_day(self.y2, self.m2, self.t2)},
                 'group': group
             }},
                 {'$unwind': '$targets'},
                 {'$group': {'_id': '$targets', 'value': {'$sum': 1}}},
                 {'$project': {'_id': 0, 'name': '$_id', 'value': 1}}
             ])
-        aliasTag = "|"
-        aliasIP = "|"
+        aliasTag = "| "
+        aliasIP = "| "
         for tag in tagSet:
             if tag['name'] is not None:
                 if tag['name'][0:2] == "IP":
-                    aliasIP += tag['name'][3:] + '|'
+                    aliasIP += tag['name'][3:] + ' | '
                 else:
-                    aliasTag += tag['name'] + '|'
+                    aliasTag += tag['name'] + ' | '
         return aliasTag, aliasIP
 
     def _find_man(self, group):
         operators = self._conn()[self.col].aggregate(
             [{'$match': {
-                'alarmTime': {'$gte': self._last_day(self.y1, self.m1, self.t1),
-                              '$lte': self._last_day(self.y2, self.m2, self.t2)},
+                self.case: {'$gte': self._last_day(self.y1, self.m1, self.t1),
+                            '$lte': self._last_day(self.y2, self.m2, self.t2)},
                 'group': group
             }},
                 {'$unwind': '$targets'},
                 {'$group': {'_id': '$wikiContent.contacts'}},
                 {'$project': {'_id': 0, 'name': '$_id', 'value': 1}}
             ])
-        aliasOpts = "|"
+        aliasOpts = ""
         temp = []
         for man in operators:
             if man['name'] is not None:
@@ -229,11 +236,15 @@ class Monger:
                         temp.append(a)
         if len(temp) != 0:
             for opt in temp:
-                aliasOpts += opt + '|'
-        return aliasOpts
+                aliasOpts += '、' + opt
+        return aliasOpts[1:]
+
+    def _find_last_month(self, group):
+        # @TODO(find last month's count)
+        pass
 
     def index_data(self):
-        group, times, mins, _, _, count1, count2 = self._summery_data()
+        group, times, mins, _, _, count1, count2, maxDuration, maxAlarm = self._summery_data()
         cacheName = 'indexCache' + str(self.year) + str(self.month)
         res = self.RDB.extract_redis(cacheName)
         if res is not None:
@@ -251,7 +262,9 @@ class Monger:
                     'contents': len(count2[g]),
                     'tag': tag,
                     'IP': IP,
-                    'operators': operators
+                    'operators': operators,
+                    'maxDuration': maxDuration[g],
+                    'maxAlarm': maxAlarm[g]
                 }
                 res.append(dic)
             self.RDB.store_redis(json.dumps(res), cacheName)
