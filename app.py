@@ -28,10 +28,16 @@ def index():
 
 
 @app.route('/api/<year>/<month>', methods=['GET'])
+@cross_origin()
 def api(year, month):
-    res = Monger(url, port, dbname, auth, collection, case, utc, hostR, portR, authR).index_data(translation[year],
-                                                                                                 translation[month])
-    return jsonify(res)
+    res = Monger(url, port, dbname, auth, collection, case, utc, hostR, portR, authR, translation[year],
+                 translation[month]).index_data()
+    apiValue = {
+        'status': 'success',
+        'totals': len(res),
+        'data': res
+    }
+    return apiValue
 
 
 if __name__ == '__main__':
