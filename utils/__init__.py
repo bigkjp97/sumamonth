@@ -240,8 +240,22 @@ class Monger:
         return aliasOpts[1:]
 
     def _find_last_month(self, group):
-        # @TODO(find last month's count)
-        pass
+        def last_month(year, month):
+            if month == 1:
+                lastMonth = 12
+                lastYear = year - 1
+            else:
+                lastMonth = month - 1
+                lastYear = year
+            return lastYear, lastMonth
+
+        y1, m1 = last_month(self.y1, self.m1)
+        y2, m2 = last_month(self.y2, self.m2)
+        lastCount = self._conn()[self.col].find(
+            {'alarmTime': {'$gte': self._last_day(y1, m1, self.t1),
+                           '$lte': self._last_day(y2, m2, self.t2)},
+             'group': group}).count()
+        return lastCount
 
     def index_data(self):
         group, times, mins, _, _, count1, count2, maxDuration, maxAlarm = self._summery_data()
@@ -254,6 +268,7 @@ class Monger:
             for g in range(len(group)):
                 tag, IP = self._find_tag(group[g])
                 operators = self._find_man(group[g])
+                lastMonth = self._find_last_month(group[g])
                 dic = {
                     'group': group[g],
                     'times': times[g],
@@ -264,7 +279,8 @@ class Monger:
                     'IP': IP,
                     'operators': operators,
                     'maxDuration': maxDuration[g],
-                    'maxAlarm': maxAlarm[g]
+                    'maxAlarm': maxAlarm[g],
+                    'lastMonth': lastMonth
                 }
                 res.append(dic)
             self.RDB.store_redis(json.dumps(res), cacheName)
