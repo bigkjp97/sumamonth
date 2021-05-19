@@ -303,7 +303,7 @@ class RedisMonth:
 
     def store_redis(self, data, name):
         # Cache data with year&month
-        self._conn().setex(name, 60, data)
+        self._conn().setex(name, 600, data)
         # self._conn().execute_command('JSON.SET', name, '.', data)
         # self._conn().execute_command('JSON.DEL', 'monthCache' + name)
 

@@ -46,23 +46,43 @@ def api(year, month):
         if reverse is not None:
             arr.sort(key=lambda x: x[name[5:]], reverse=reverse)
 
-    def search_display(arr, name, attr):
-        sTemp = []
-        for a in arr:
-            if re.match(name, a[attr]):
-                sTemp.append(a)
-        return sTemp
+    def search_display(arr, cases, attr):
+        # store search cases
+        cTemp = []
+        aTemp = []
+        for i in range(len(cases)):
+            if len(cases[i]) > 0:
+                cTemp.append(cases[i])
+                aTemp.append(attr[i])
+        temp = []
+        resTemp = []
+        # @TODO(code):rubbish
+        if len(cTemp) > 1:
+            for c in range(len(cTemp)):
+                if c == 0:
+                    for a in arr:
+                        if re.search(cTemp[c], a[aTemp[c]]):
+                            temp.append(a)
+                elif len(cTemp) > 1:
+                    for t in temp:
+                        if re.search(cTemp[c], t[aTemp[c]]):
+                            resTemp.append(t)
+            return resTemp
+        else:
+            for a in arr:
+                if re.search(cTemp[0], a[aTemp[0]]):
+                    temp.append(a)
+            return temp
 
     sort_display(data, request, 'sort_times')
     cPage = int(request.form.get('cPage'))
     pSize = int(request.form.get('pSize'))
     res = data[(cPage - 1) * pSize: cPage * pSize]
-    group = request.form.get('group')
-    operators = request.form.get('operators')
-    if group is not None and len(group) > 0:
-        res = search_display(data, group, 'group')
-    if operators is not None and len(operators) > 0:
-        res = search_display(data, operators, 'operators')
+    if (request.form.get('group') or request.form.get('operators')) is not None:
+        if len(request.form.get('group')) > 0 or len(request.form.get('operators')) > 0:
+            search = [request.form.get('group'), request.form.get('operators')]
+            attribute = ['group', 'operators']
+            res = search_display(data, search, attribute)[(cPage - 1) * pSize: cPage * pSize]
     apiValue = {
         'status': 'success',
         'totals': len(data),
@@ -73,4 +93,4 @@ def api(year, month):
 
 
 if __name__ == '__main__':
-    app.run('127.0.0.1', 5000, debug=True)
+    app.run('172.31.30.21', 5000, debug=True)
