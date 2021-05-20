@@ -37,13 +37,10 @@ def api(year, month):
     # Get form content
     D = Display(request)
     D.sort_display(data, 'sort_times')
-    cPage = int(request.form.get('cPage'))
-    pSize = int(request.form.get('pSize'))
-    res = data[(cPage - 1) * pSize: cPage * pSize]
+    res = D.page_display(data, 'cPage', 'pSize')
     if (request.form.get('group') or request.form.get('operators')) is not None:
         if len(request.form.get('group')) > 0 or len(request.form.get('operators')) > 0:
-            attribute = ['group', 'operators']
-            res = D.search_display(data, attribute)[(cPage - 1) * pSize: cPage * pSize]
+            res = D.page_display(D.search_display(data, ['group', 'operators']), 'cPage', 'pSize')
     apiValue = {
         'status': 'success',
         'totals': len(data),
