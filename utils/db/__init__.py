@@ -1,13 +1,12 @@
+import redis
 import calendar
 import datetime
 import json
 import re
 import time
-
 import pymongo
 
-from utils.controller.Output import Output
-from utils.db.Rediser import Rediser
+from utils.controller import Output, Configure
 
 
 class Monger:
@@ -15,29 +14,10 @@ class Monger:
     Use Pymongo
     """
 
-    def __init__(self,
-                 url,
-                 port,
-                 dbname,
-                 auth,
-                 col_name,
-                 case,
-                 utc,
-                 hostR,
-                 portR,
-                 authR,
-                 year,
-                 month):
-        self.url = url
-        self.port = port
-        self.dbname = dbname
-        self.auth = auth
-        self.col = col_name
-        self.case = case
-        self.utc = utc
-        self.hostR = hostR
-        self.portR = portR
-        self.authR = authR
+    def __init__(self, file, year, month):
+        self.mongoHost, self.mongoPort, self.mongoAuth, self.mongoDbname, \
+        self.mongoCollection, self.mongoCase, self.utc, \
+        self.redisHost, self.redisPort, self.redisAuth = Configure(file).config()
         self.year = year
         self.month = month
         self.t1, self.t2 = [16, 0, 0], [15, 59, 59]
@@ -50,12 +30,12 @@ class Monger:
             self.m1, self.m2 = month - 1, month
         self.now = datetime.datetime.today() - datetime.timedelta(hours=8)
         self.maxTry = 0
-        self.RDB = Rediser(self.hostR, self.portR, self.authR)
+        self.RDB = Rediser(self.redisHost, self.redisPort, self.redisAuth)
 
     def _conn(self):
-        client = pymongo.MongoClient(self.url, self.port)
-        db = client[self.dbname]
-        db.authenticate(self.auth[0], self.auth[1])
+        client = pymongo.MongoClient(self.mongoHost, self.mongoPort)
+        db = client[self.mongoDbname]
+        db.authenticate(self.mongoAuth[0], self.mongoAuth[1])
         return db
 
     def _last_day(self, y, m, t):
@@ -90,12 +70,12 @@ class Monger:
         try:
             self._conn()
             Output("INFO", "MongoDB connection succeeded")
-            Output("INFO", "Use '" + self.col + "' as basic collection")
+            Output("INFO", "Use '" + self.mongoCollection + "' as basic collection")
         except:
             Output("ERROR", "MongoDB connection failed")
         else:
-            dataset = self._conn()[self.col].find({
-                self.case: {
+            dataset = self._conn()[self.mongoCollection].find({
+                self.mongoCase: {
                     '$gte': self._last_day(self.y1, self.m1, self.t1),
                     '$lte': self._last_day(self.y2, self.m2, self.t2)
                 }
@@ -114,7 +94,7 @@ class Monger:
         This is customized way to handle collection
         and extract info
 
-        @TODO(data): Fixed dead code
+        @TODO(data): long code
         """
         cacheName = 'monthCache' + str(self.year) + str(self.month)
         dataset = self.RDB.extract_redis(cacheName)
@@ -146,9 +126,9 @@ class Monger:
         group, times, mins = [], [], []
         groupCodes, codes, groupContents, contents, groupMaxDuration, groupMaxAlarm = [], [], [], [], [], []
         for i in range(len(monthData)):
-            gName, dMins, cName, cmdName, maxAlarm = monthData[i]['group'], monthData[i]['duration'], monthData[i][
-                'code'], \
-                                                     monthData[i]['codeCmd'], monthData[i]['start']
+            gName, dMins, cName, cmdName, maxAlarm = monthData[i]['group'], monthData[i]['duration'], \
+                                                     monthData[i]['code'], monthData[i]['codeCmd'], \
+                                                     monthData[i]['start']
             if gName not in group:
                 group.append(gName)
                 times.append(1)
@@ -181,10 +161,10 @@ class Monger:
         """
         Use aggregate to find something
         """
-        tagSet = self._conn()[self.col].aggregate(
+        tagSet = self._conn()[self.mongoCollection].aggregate(
             [{'$match': {
-                self.case: {'$gte': self._last_day(self.y1, self.m1, self.t1),
-                            '$lte': self._last_day(self.y2, self.m2, self.t2)},
+                self.mongoCase: {'$gte': self._last_day(self.y1, self.m1, self.t1),
+                                 '$lte': self._last_day(self.y2, self.m2, self.t2)},
                 'group': group
             }},
                 {'$unwind': '$targets'},
@@ -202,10 +182,10 @@ class Monger:
         return aliasTag, aliasIP
 
     def _find_man(self, group):
-        operators = self._conn()[self.col].aggregate(
+        operators = self._conn()[self.mongoCollection].aggregate(
             [{'$match': {
-                self.case: {'$gte': self._last_day(self.y1, self.m1, self.t1),
-                            '$lte': self._last_day(self.y2, self.m2, self.t2)},
+                self.mongoCase: {'$gte': self._last_day(self.y1, self.m1, self.t1),
+                                 '$lte': self._last_day(self.y2, self.m2, self.t2)},
                 'group': group
             }},
                 {'$unwind': '$targets'},
@@ -237,7 +217,7 @@ class Monger:
 
         y1, m1 = last_month(self.y1, self.m1)
         y2, m2 = last_month(self.y2, self.m2)
-        lastCount = self._conn()[self.col].find(
+        lastCount = self._conn()[self.mongoCollection].find(
             {'alarmTime': {'$gte': self._last_day(y1, m1, self.t1),
                            '$lte': self._last_day(y2, m2, self.t2)},
              'group': group}).count()
@@ -271,3 +251,28 @@ class Monger:
                 res.append(dic)
             self.RDB.store_redis(json.dumps(res), cacheName)
         return res
+
+
+class Rediser:
+    """
+    Store monthly data into redis
+    """
+
+    def __init__(self, host, port, auth):
+        self.host = host
+        self.port = port
+        self.auth = auth
+
+    def _conn(self):
+        rdb = redis.StrictRedis(host=self.host, port=self.port, password=self.auth, decode_responses=True)
+        return rdb
+
+    def store_redis(self, data, name):
+        # Cache data with year&month
+        self._conn().setex(name, 600, data)
+        # self._conn().execute_command('JSON.SET', name, '.', data)
+        # self._conn().execute_command('JSON.DEL', 'monthCache' + name)
+
+    def extract_redis(self, name):
+        return self._conn().get(name)
+        # return self._conn().execute_command('JSON.GET', name)
