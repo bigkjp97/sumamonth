@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <link rel="stylesheet" type="text/css" href="./css/gm.css">
+    <script type="text/javascript" src="./js/gm.js"></script>
+    <link rel="icon" type="image/png" sizes="144x144" href="./css/github-square.svg"/>
+    <title>预警报表</title>
+    <style>
+        html, body {
+            overflow-x: hidden;
+            margin: 0;
+            padding: 0;
+        }
+
+        .plugin-action {
+            display: inline-block;
+            color: steelblue;
+            margin-right: 10px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .plugin-action:hover {
+            text-decoration: underline;
+        }
+
+        .search-area {
+            padding: 10px 20px;
+            border: 1px solid #ccc;
+            background: #efefef;
+            margin-bottom: 15px;
+        }
+
+        .search-area .sa-ele {
+            display: inline-block;
+            margin-right: 20px;
+            font-size: 12px;
+        }
+
+        .search-area .sa-ele .se-title {
+            display: inline-block;
+            margin-right: 10px;
+        }
+
+        .search-area .sa-ele .se-con {
+            display: inline-block;
+            width: 180px;
+            height: 24px;
+            border: 1px solid #ccc;
+            padding: 0 4px;
+            line-height: 24px;
+        }
+
+        .search-area .sa-ele .search-action, .search-area .sa-ele .reset-action {
+            display: inline-block;
+            width: 80px;
+            height: 26px;
+            border: 1px solid #ccc;
+            background: #e8e8e8;
+            padding: 0 4px;
+            line-height: 26px;
+            text-align: center;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        .search-area .sa-ele .search-action:hover, .search-area .sa-ele .reset-action:hover {
+            opacity: 0.7;
+        }
+
+        .bottom-bar {
+            background: #f8f8f8;
+            padding: 10px;
+            margin-top: 10px;
+        }
+
+        .bottom-bar button {
+            padding: 5px 20px;
+            margin-right: 10px;
+        }
+
+        .bottom-bar a {
+            font-size: 12px;
+            margin-right: 10px;
+        }
+
+        .grid-main {
+            height: calc(100vh - 64px - 57px);
+        }
+
+        .table-form {
+            display: flex;
+            padding: 14px 100px;
+        }
+
+        .tf-photo {
+            width: 60px;
+            height: 60px;
+            border: 1px solid #eee;
+            border-radius: 50%;
+            overflow: hidden;
+        }
+
+        .tf-photo img {
+            width: 60px;;
+        }
+
+        .tf-text {
+            width: 240px;
+            padding-left: 10px
+        }
+
+        .tf-el {
+            line-height: 30px;
+        }
+
+        .tf-el label {
+            display: inline-block;
+            width: 50px;
+            color: #666;
+            margin-right: 10px;
+            text-align: right;
+            font-weight: 600;
+        }
+    </style>
+</head>
+
+<body>
+<!--@TODO():select month-->
+<section class="search-area">
+    <div class="sa-ele">
+        <label class="se-title">系统:</label>
+        <input class="se-con" name="group"/>
+    </div>
+    <div class="sa-ele">
+        <label class="se-title">管理员:</label>
+        <input class="se-con" name="operators"/>
+    </div>
+    <div class="sa-ele">
+        <button class="search-action">搜索</button>
+        <button class="reset-action">重置</button>
+    </div>
+    <div class="sa-ele">
+        <label class="se-title">年份:</label>
+        <input id="year" placeholder="1970" class="se-con" name="year"/>
+    </div>
+    <div class="sa-ele">
+        <label class="se-title">月份:</label>
+        <input id="month" placeholder="1" class="se-con" name="month"/>
+    </div>
+    <div class="sa-ele">
+        <button class="month-action">查看</button>
+    </div>
+</section>
+
+<section class="grid-main">
+    <table id="test"></table>
+</section>
+
+<section class="bottom-bar">
+    <button id="init-gm" disabled>init</button>
+    <button id="destroy-gm" disabled>destroy</button>
+    <a href="https://github.com/bigkjp97" target="_blank">查看源码</a>
+</section>
+
+<script type="text/javascript">
+    // GridManager 渲染
+    var table = document.querySelector('#test');
+
+
+    function get_date(year, month) {
+        var monthArr = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",]
+        var yearDic = {
+            2020: "20th",
+            2021: "21st"
+
+        }
+        return [yearDic[year], monthArr[month - 1]]
+    }
+
+    var [year, month] = get_date(new Date().getFullYear(), new Date().getMonth() + 1)
+
+    function init() {
+        document.getElementById('year').placeholder = new Date().getFullYear()
+        document.getElementById('month').placeholder = new Date().getMonth() + 1
+        table.GM({
+            gridManagerName: 'test',
+            width: '100%',
+            height: '100%',
+            supportAjaxPage: true,
+            isCombSorting: true,
+            disableLine: true,
+            autoOrderConfig: {
+                fixed: 'left'
+            },
+            checkboxConfig: {
+                fixed: 'left'
+            },
+            fullColumn: {
+                useFold: true,
+                // fixed: 'left', // 折叠事件列固定方向
+                // openState: true,
+                bottomTemplate: function (row, index) {
+                    return `<div class="table-form">
+                                <div class="tf-text">
+                                    <div class="tf-el"><label>管理员:</label>${row.operators}</div>
+                                    <div class="tf-el"><label>关联IP:</label>${row.IP}</div>
+                                    <div class="tf-el"><label>关联标签:</label>${row.tag}</div>
+                                </div>
+                                <div class="tf-text">
+                                </div>
+                                <div class="tf-text">
+                                    <div class="tf-el"><label>上月预警:</label>${row.lastMonth}<span>次</span></div>
+                                 </div>
+                           </div>`;
+                }
+            },
+            ajaxData: function () {
+                return 'http://localhost:5000/api/' + year + '/' + month;
+            },
+            ajaxType: 'POST',
+            supportMenu: true,
+            columnData: [
+                {
+                    key: 'group',
+                    remind: 'group name',
+                    align: 'left',
+                    text: '系统简称',
+                    // 使用函数返回 dom node
+                    template: function (group, rowObject) {
+                        var titleNode = document.createElement('a');
+                        titleNode.method = "post"
+                        titleNode.action = "https://github.com/bigkjp97"
+                        titleNode.setAttribute('href', `https://github.com/bigkjp97`);
+                        titleNode.setAttribute('title', group);
+                        titleNode.setAttribute('target', '_blank');
+                        titleNode.innerText = group;
+                        titleNode.title = `点击查看[${rowObject.group}]`;
+                        titleNode.classList.add('plugin-action');
+                        return titleNode;
+                    }
+                }, {
+                    key: 'times',
+                    remind: '当月计数',
+                    text: '预警次数',
+                    sorting: 'DESC'
+                }, {
+                    key: 'mins',
+                    remind: '预警持续分钟',
+                    text: '预警时长（min)',
+                }, {
+                    key: 'codes',
+                    remind: '出现预警编号计数',
+                    text: '预警编号（种）'
+                }, {
+                    key: 'maxDuration',
+                    remind: '预警最长持续时间',
+                    text: '最长时间'
+                }, {
+                    key: 'maxAlarm',
+                    remind: '发生最长预警的时间点',
+                    text: '发生时间点'
+                }
+            ]
+            // 排序后事件
+            , sortingAfter: function (data) {
+                console.log('sortAfter', data);
+            }
+        }, function (query) {
+            // 渲染完成后的回调函数
+            console.log('渲染完成后的回调函数:', query);
+        });
+    }
+
+    /**
+     * 提供demo中的搜索, 重置
+     */
+    (function () {
+
+        // 绑定搜索事件
+        document.querySelector('.search-action').addEventListener('click', function () {
+            var _query = {
+                group: document.querySelector('[name="group"]').value,
+                operators: document.querySelector('[name="operators"]').value,
+                cPage: 1
+            };
+            table.GM('setQuery', _query, function () {
+                console.log('setQuery执行成功');
+            });
+        });
+
+        // 绑定重置
+        document.querySelector('.reset-action').addEventListener('click', function () {
+            document.querySelector('[name="group"]').value = '';
+            document.querySelector('[name="operators"]').value = '';
+        });
+
+        // 按月查询
+        document.querySelector('.month-action').addEventListener('click', function () {
+            [year, month] = get_date(document.querySelector('[name="year"]').value, document.querySelector('[name="month"]').value)
+            init()
+            document.querySelector('[name="group"]').value = '';
+            document.querySelector('[name="operators"]').value = '';
+        })
+    })();
+
+    /**
+     * 绑定 实例化, 消毁事件
+     */
+    (function () {
+        var initDOM = document.getElementById('init-gm');
+        var destroyDOM = document.getElementById('destroy-gm');
+        var codeShowDOM = document.querySelector('.code-show');
+        // 绑定初始化事件
+        initDOM.onclick = function () {
+            init();
+            initDOM.setAttribute('disabled', '');
+            destroyDOM.removeAttribute('disabled');
+        };
+
+        // 绑定消毁事件
+        destroyDOM.onclick = function () {
+            table.GM('destroy');
+            initDOM.removeAttribute('disabled');
+            destroyDOM.setAttribute('disabled', '');
+        };
+
+    })();
+
+    /**
+     * 初始进入时, 执行init 方法
+     */
+    (function () {
+        init();
+        var initDOM = document.getElementById('init-gm');
+        var destroyDOM = document.getElementById('destroy-gm');
+        initDOM.setAttribute('disabled', '');
+        destroyDOM.removeAttribute('disabled');
+    })();
+</script>
+</body>
+</html>
