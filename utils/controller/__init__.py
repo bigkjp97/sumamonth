@@ -42,11 +42,11 @@ class Configure:
     def config(self):
         with open(self.file) as f:
             params = yaml.load(f, Loader=yaml.FullLoader)
-            mongoParam = params['mongodb'][0]
-            redisParam = params['redis'][0]
-            return mongoParam['host'], mongoParam['port'], mongoParam['auth'], \
-                   mongoParam['dbname'], mongoParam['collection'], mongoParam['case'], mongoParam['utc'], \
-                   redisParam['host'], redisParam['port'], redisParam['auth']
+            mongo_param = params['mongodb'][0]
+            redis_param = params['redis'][0]
+            return mongo_param['host'], mongo_param['port'], mongo_param['auth'], \
+                   mongo_param['dbname'], mongo_param['collection'], mongo_param['case'], mongo_param['utc'], \
+                   redis_param['host'], redis_param['port'], redis_param['auth']
 
 
 class Display:
@@ -76,22 +76,22 @@ class Display:
         # store search cases
         for n in name:
             cases.append(self.req.form.get(n))
-        cTemp = []
-        aTemp = []
+        c_temp = []
+        a_temp = []
         for i in range(len(cases)):
             if len(cases[i]) > 0:
-                cTemp.append(cases[i])
-                aTemp.append(name[i])
+                c_temp.append(cases[i])
+                a_temp.append(name[i])
         temp = []
-        resTemp = []
+        res_temp = []
         for a in arr:
-            if re.search(cTemp[0], a[aTemp[0]]):
+            if re.search(c_temp[0], a[a_temp[0]]):
                 temp.append(a)
-        if len(cTemp) > 1:
-            for c in range(1, len(cTemp)):
+        if len(c_temp) > 1:
+            for c in range(1, len(c_temp)):
                 for t in temp:
-                    if re.search(cTemp[c], t[aTemp[c]]):
-                        resTemp.append(t)
-            return resTemp
+                    if re.search(c_temp[c], t[a_temp[c]]):
+                        res_temp.append(t)
+            return res_temp
         else:
             return temp

@@ -15,9 +15,9 @@ class Monger:
     """
 
     def __init__(self, file, year, month):
-        self.mongoHost, self.mongoPort, self.mongoAuth, self.mongoDbname, \
-        self.mongoCollection, self.mongoCase, self.utc, \
-        self.redisHost, self.redisPort, self.redisAuth = Configure(file).config()
+        self.mongo_host, self.mongo_port, self.mongo_auth, self.mongo_dbname, \
+        self.mongo_collection, self.mongo_case, self.utc, \
+        self.redis_host, self.redis_port, self.redis_auth = Configure(file).config()
         self.year = year
         self.month = month
         self.t1, self.t2 = [16, 0, 0], [15, 59, 59]
@@ -30,12 +30,12 @@ class Monger:
             self.m1, self.m2 = month - 1, month
         self.now = datetime.datetime.today() - datetime.timedelta(hours=8)
         self.maxTry = 0
-        self.RDB = Rediser(self.redisHost, self.redisPort, self.redisAuth)
+        self.RDB = Rediser(self.redis_host, self.redis_port, self.redis_auth)
 
     def _conn(self):
-        client = pymongo.MongoClient(self.mongoHost, self.mongoPort)
-        db = client[self.mongoDbname]
-        db.authenticate(self.mongoAuth[0], self.mongoAuth[1])
+        client = pymongo.MongoClient(self.mongo_host, self.mongo_port)
+        db = client[self.mongo_dbname]
+        db.authenticate(self.mongo_auth[0], self.mongo_auth[1])
         return db
 
     def _last_day(self, y, m, t):
@@ -54,11 +54,11 @@ class Monger:
         :param t: time
         :return:
         """
-        timeArr = datetime.datetime.strftime(t, "%Y-%m-%d %H:%M:%S")
-        timeArr = time.strptime(timeArr, "%Y-%m-%d %H:%M:%S")
-        timeUTC = int(time.mktime(timeArr))
-        timeStamp = timeUTC + self.utc * 60 * 60
-        return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(timeStamp))
+        time_arr = datetime.datetime.strftime(t, "%Y-%m-%d %H:%M:%S")
+        time_arr = time.strptime(time_arr, "%Y-%m-%d %H:%M:%S")
+        time_utc = int(time.mktime(time_arr))
+        timestamp = time_utc + self.utc * 60 * 60
+        return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(timestamp))
 
     def _collection(self):
         """
@@ -70,12 +70,12 @@ class Monger:
         try:
             self._conn()
             Output("INFO", "MongoDB connection succeeded")
-            Output("INFO", "Use '" + self.mongoCollection + "' as basic collection")
+            Output("INFO", "Use '" + self.mongo_collection + "' as basic collection")
         except:
             Output("ERROR", "MongoDB connection failed")
         else:
-            dataset = self._conn()[self.mongoCollection].find({
-                self.mongoCase: {
+            dataset = self._conn()[self.mongo_collection].find({
+                self.mongo_case: {
                     '$gte': self._last_day(self.y1, self.m1, self.t1),
                     '$lte': self._last_day(self.y2, self.m2, self.t2)
                 }
@@ -89,168 +89,31 @@ class Monger:
             # data object
             return dset
 
-    def _month_data(self):
+    def index_data(self):
         """
         This is customized way to handle collection
         and extract info
 
         @TODO(data): long code
         """
-        cacheName = 'monthCache' + str(self.year) + str(self.month)
-        dataset = self.RDB.extract_redis(cacheName)
+        cache_name = 'cache' + str(self.year) + str(self.month)
+        dataset = self.RDB.get_redis(cache_name)
         if dataset is not None:
             dataset = json.loads(dataset)
         else:
             dataset = []
             for line in self._collection():
-                if re.findall(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", line['group']):
-                    continue
                 data = {
-                    'group': line['group'],
+                    'name': line['name'],
                     'code': line['code'],
-                    'codeCmd': line['codeCmd'],
-                    'query': line['queryCmd'],
                     # 2021-05-05 00:00:00
-                    'start': self._time_transfer(line['alarmTime']),
-                    'end': self._time_transfer(line['exitAlarmTime']),
-                    'duration': round(line['alarmDuration'] / 60),
+                    'start': self._time_transfer(line['start']),
+                    'end': self._time_transfer(line['end']),
                     'description': line['description'],
-                    'wiki': line['wikiContent'],
                 }
                 dataset.append(data)
-            self.RDB.store_redis(json.dumps(dataset), cacheName)
+            self.RDB.store_redis(json.dumps(dataset), cache_name)
         return dataset
-
-    def _summery_data(self):
-        monthData = self._month_data()
-        group, times, mins = [], [], []
-        groupCodes, codes, groupContents, contents, groupMaxDuration, groupMaxAlarm = [], [], [], [], [], []
-        for i in range(len(monthData)):
-            gName, dMins, cName, cmdName, maxAlarm = monthData[i]['group'], monthData[i]['duration'], \
-                                                     monthData[i]['code'], monthData[i]['codeCmd'], \
-                                                     monthData[i]['start']
-            if gName not in group:
-                group.append(gName)
-                times.append(1)
-                mins.append(dMins)
-                codes.append([cName])
-                contents.append([cmdName])
-                groupCodes.append([1])
-                groupContents.append([1])
-                groupMaxDuration.append(dMins)
-                groupMaxAlarm.append(maxAlarm)
-            else:
-                times[group.index(gName)] += 1
-                mins[group.index(gName)] += dMins
-                if cName not in codes[group.index(gName)]:
-                    codes[group.index(gName)].append(cName)
-                    groupCodes[group.index(gName)].append(1)
-                else:
-                    groupCodes[group.index(gName)][codes[group.index(gName)].index(cName)] += 1
-                if cmdName in contents[group.index(gName)]:
-                    groupContents[group.index(gName)][contents[group.index(gName)].index(cmdName)] += 1
-                else:
-                    contents[group.index(gName)].append(cmdName)
-                    groupContents[group.index(gName)].append(1)
-                if groupMaxDuration[group.index(gName)] < dMins:
-                    groupMaxDuration[group.index(gName)] = dMins
-                    groupMaxAlarm[group.index(gName)] = maxAlarm
-        return group, times, mins, codes, contents, groupCodes, groupContents, groupMaxDuration, groupMaxAlarm
-
-    def _find_tag(self, group):
-        """
-        Use aggregate to find something
-        """
-        tagSet = self._conn()[self.mongoCollection].aggregate(
-            [{'$match': {
-                self.mongoCase: {'$gte': self._last_day(self.y1, self.m1, self.t1),
-                                 '$lte': self._last_day(self.y2, self.m2, self.t2)},
-                'group': group
-            }},
-                {'$unwind': '$targets'},
-                {'$group': {'_id': '$targets', 'value': {'$sum': 1}}},
-                {'$project': {'_id': 0, 'name': '$_id', 'value': 1}}
-            ])
-        aliasTag = "| "
-        aliasIP = "| "
-        for tag in tagSet:
-            if tag['name'] is not None:
-                if tag['name'][0:2] == "IP":
-                    aliasIP += tag['name'][3:] + ' | '
-                else:
-                    aliasTag += tag['name'] + ' | '
-        return aliasTag, aliasIP
-
-    def _find_man(self, group):
-        operators = self._conn()[self.mongoCollection].aggregate(
-            [{'$match': {
-                self.mongoCase: {'$gte': self._last_day(self.y1, self.m1, self.t1),
-                                 '$lte': self._last_day(self.y2, self.m2, self.t2)},
-                'group': group
-            }},
-                {'$unwind': '$targets'},
-                {'$group': {'_id': '$wikiContent.contacts'}},
-                {'$project': {'_id': 0, 'name': '$_id', 'value': 1}}
-            ])
-        aliasOpts = ""
-        temp = []
-        for man in operators:
-            if man['name'] is not None:
-                arr = man['name'].split(',')
-                for a in arr:
-                    if a not in temp:
-                        temp.append(a)
-        if len(temp) != 0:
-            for opt in temp:
-                aliasOpts += '、' + opt
-        return aliasOpts[1:]
-
-    def _find_last_month(self, group):
-        def last_month(year, month):
-            if month == 1:
-                lastMonth = 12
-                lastYear = year - 1
-            else:
-                lastMonth = month - 1
-                lastYear = year
-            return lastYear, lastMonth
-
-        y1, m1 = last_month(self.y1, self.m1)
-        y2, m2 = last_month(self.y2, self.m2)
-        lastCount = self._conn()[self.mongoCollection].find(
-            {'alarmTime': {'$gte': self._last_day(y1, m1, self.t1),
-                           '$lte': self._last_day(y2, m2, self.t2)},
-             'group': group}).count()
-        return lastCount
-
-    def index_data(self):
-        group, times, mins, _, _, count1, count2, maxDuration, maxAlarm = self._summery_data()
-        cacheName = 'indexCache' + str(self.year) + str(self.month)
-        res = self.RDB.extract_redis(cacheName)
-        if res is not None:
-            res = json.loads(res)
-        else:
-            res = []
-            for g in range(len(group)):
-                tag, IP = self._find_tag(group[g])
-                operators = self._find_man(group[g])
-                lastMonth = self._find_last_month(group[g])
-                dic = {
-                    'group': group[g],
-                    'times': times[g],
-                    'mins': mins[g],
-                    'codes': len(count1[g]),
-                    'contents': len(count2[g]),
-                    'tag': tag,
-                    'IP': IP,
-                    'operators': operators,
-                    'maxDuration': maxDuration[g],
-                    'maxAlarm': maxAlarm[g],
-                    'lastMonth': lastMonth
-                }
-                res.append(dic)
-            self.RDB.store_redis(json.dumps(res), cacheName)
-        return res
 
 
 class Rediser:
@@ -268,11 +131,8 @@ class Rediser:
         return rdb
 
     def store_redis(self, data, name):
-        # Cache data with year&month
+        # Cache data with year&month name
         self._conn().setex(name, 3600, data)
-        # self._conn().execute_command('JSON.SET', name, '.', data)
-        # self._conn().execute_command('JSON.DEL', 'monthCache' + name)
 
-    def extract_redis(self, name):
+    def get_redis(self, name):
         return self._conn().get(name)
-        # return self._conn().execute_command('JSON.GET', name)

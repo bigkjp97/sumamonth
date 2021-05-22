@@ -1,0 +1,13 @@
+mongodb:
+  - host: '127.0.0.1'
+    port: 27017
+    auth: [ 'mongodb','helloworld' ]
+    dbname: 'system'
+    collection: 'warning'
+    case: 'time'
+    utc: 8
+
+redis:
+  - host: '127.0.0.1'
+    port: 6379
+    auth: 'helloworld'
