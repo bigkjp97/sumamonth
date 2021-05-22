@@ -165,6 +165,7 @@ if __name__ == '__main__':
 mongodb:
   - host: '127.0.0.1'
     port: 27017
+    # [user,pwd]
     auth: [ 'mongodb','helloworld' ]
     dbname: 'system'
     collection: 'warning'
