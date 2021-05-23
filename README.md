@@ -5,10 +5,6 @@ This project is made of `MongoDB`+`Redis`+`Flask` 🎉</br>
 
 ### MongoDB
 
-```python
-class Monger:
-```
-
 #### Connect to a mongodb
 
 ```python
@@ -76,12 +72,6 @@ def json_data(self):
 ### Redis
 
 #### Use redis
-
-stronger&faster, so this project use redis to store data temporarily
-
-```python
-class Rediser:
-```
 
 make a connection
 
